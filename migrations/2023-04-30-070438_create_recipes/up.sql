@@ -1,0 +1,14 @@
+CREATE TABLE recipes (
+    id VARCHAR(11) PRIMARY KEY NOT NULL,
+    title VARCHAR(256) NOT NULL,
+    descText TEXT(50000) NOT NULL,
+    rating INT NOT NULL,
+    requiredTime INT NOT NULL,
+    cost FLOAT(24) NOT NULL
+);
+
+CREATE TABLE ingredients (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    title VARCHAR(256) NOT NULL,
+    recipe_id VARCHAR(10) NOT NULL
+);
