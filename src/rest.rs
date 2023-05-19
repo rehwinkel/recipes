@@ -1,10 +1,12 @@
 use std::{
-    convert::Infallible, net::SocketAddr, num::NonZeroUsize, ops::DerefMut, sync::Arc,
-    time::Duration,
+    convert::Infallible, io::Cursor, net::SocketAddr, num::NonZeroUsize, ops::DerefMut, path::Path,
+    sync::Arc, time::Duration,
 };
 
+use base64::Engine;
 use diesel::prelude::*;
 use fuzzy_matcher::{skim::SkimMatcherV2, FuzzyMatcher};
+use image::{io::Reader as ImageReader, ImageError};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use warp::{hyper::StatusCode, reply::Response, Filter, Reply};
@@ -40,6 +42,44 @@ struct RecipeWithIngredients {
     ingredients: Vec<String>,
 }
 
+enum ClientImageError {
+    InvalidBase64,
+    InvalidFormat(ImageError),
+    IoError,
+}
+
+impl From<ImageError> for ClientImageError {
+    fn from(value: ImageError) -> Self {
+        ClientImageError::InvalidFormat(value)
+    }
+}
+impl From<std::io::Error> for ClientImageError {
+    fn from(_: std::io::Error) -> Self {
+        ClientImageError::IoError
+    }
+}
+
+fn decode_image_and_store(id: &str, data_base64: &str) -> Result<(), ClientImageError> {
+    let engine = &base64::engine::general_purpose::STANDARD;
+    let mut bytes = Vec::new();
+    engine
+        .decode_vec(data_base64, &mut bytes)
+        .map_err(|_| ClientImageError::InvalidBase64)?;
+    let img = ImageReader::new(Cursor::new(&bytes))
+        .with_guessed_format()?
+        .decode()?;
+    let images_path = Path::new("images");
+    if !images_path.is_dir() {
+        log::warn!("Images directory is missing");
+    }
+    img.save_with_format(
+        images_path.join(format!("{}.jpeg", id)),
+        image::ImageFormat::Jpeg,
+    )
+    .map_err(|_| ClientImageError::IoError)?;
+    Ok(())
+}
+
 async fn handle_create_recipe(body: CreateRecipeBody, conn: Db) -> Result<impl Reply, Infallible> {
     let mut conn = conn.lock().await;
     use crate::model::{NewIngredient, Recipe};
@@ -51,6 +91,18 @@ async fn handle_create_recipe(body: CreateRecipeBody, conn: Db) -> Result<impl R
         Duration::from_secs(body.time as u64 * 60),
         body.cost,
     );
+    if let Some(image) = body.image_blob {
+        if let Err(_error) = decode_image_and_store(&recipe.id, &image) {
+            log::error!(
+                "Failed to upload image for id {}, recipe not created.",
+                &recipe.id
+            );
+            return Ok(warp::reply::with_status(
+                warp::reply::json(&"Failed to upload image, recipe not created"),
+                StatusCode::BAD_REQUEST,
+            ));
+        }
+    }
     let ingredients: Vec<NewIngredient> = body
         .ingredients
         .into_iter()
@@ -67,8 +119,11 @@ async fn handle_create_recipe(body: CreateRecipeBody, conn: Db) -> Result<impl R
         .values(&ingredients)
         .execute(conn.deref_mut())
         .expect("Failed to insert ingredients into DB");
-    // TODO: handle image blob
-    Ok(warp::reply::json(&recipe.id))
+    log::info!("Recipe created with id {}", &recipe.id);
+    Ok(warp::reply::with_status(
+        warp::reply::json(&recipe.id),
+        StatusCode::CREATED,
+    ))
 }
 
 async fn handle_get_recipe_by_id(uid: String, conn: Db) -> Result<Response, Infallible> {
@@ -210,9 +265,9 @@ pub async fn run_server(addr: SocketAddr, conn: Db) {
         .with(cors);
 
     let (addr, server) = warp::serve(filter).bind_with_graceful_shutdown(addr, shutdown_signal());
-    println!("Serving on address {} with port {}", addr.ip(), addr.port());
+    log::info!("Serving on address {} with port {}", addr.ip(), addr.port());
     server.await;
-    println!("Server closed");
+    log::info!("Server closed");
 }
 
 async fn shutdown_signal() {

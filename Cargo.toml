@@ -12,3 +12,7 @@ serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
 clap = { version = "4.2.5", features = ["derive"] }
 fuzzy-matcher = "0.3.7"
+image = "0.24.6"
+log = "0.4"
+fern = "0.6.2"
+humantime = "2.1.0"

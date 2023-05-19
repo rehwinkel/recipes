@@ -19,8 +19,28 @@ struct Args {
     port: u16,
 }
 
+fn setup_logger() {
+    fern::Dispatch::new()
+        .format(|out, message, record| {
+            out.finish(format_args!(
+                "[{} {} {}] {}",
+                humantime::format_rfc3339_seconds(std::time::SystemTime::now()),
+                record.level(),
+                record.target(),
+                message
+            ))
+        })
+        .level(log::LevelFilter::Debug)
+        .level_for("hyper", log::LevelFilter::Info)
+        .chain(std::io::stdout())
+        .apply()
+        .unwrap();
+}
+
 #[tokio::main]
 async fn main() {
+    setup_logger();
+
     let args = Args::parse();
 
     let addr_string = format!("{}:{}", args.host, args.port);
