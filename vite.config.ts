@@ -9,4 +9,7 @@ export default defineConfig({
   build: {
     target: 'esnext',
   },
+  define: {
+    "__SERVER_BASE__": JSON.stringify("http://127.0.0.1:48080")
+  }
 });

@@ -2,6 +2,7 @@ import { useNavigate } from '@solidjs/router';
 import { Component, createMemo, createSignal, For } from 'solid-js';
 import star_black from "./assets/icons/star-black.svg";
 import star from "./assets/icons/star-yellow.svg";
+import { API_BASE_URL } from './constants';
 
 const timeRegex = new RegExp("^\\d\\d:\\d\\d$");
 
@@ -41,7 +42,7 @@ const AddFood: Component = () => {
         ingredients: Array<string>,
         image_blob?: string
     }) => {
-        return await fetch("http://localhost:8080/recipe", {
+        return await fetch(API_BASE_URL + "/recipe", {
             headers: {
                 "Content-Type": "application/json"
             },

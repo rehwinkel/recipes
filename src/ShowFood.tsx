@@ -6,6 +6,7 @@ import time from "./assets/icons/clock-outline.svg";
 import missing_food from "./assets/icons/file-remove-outline.svg";
 import Stars from "./Stars";
 import Loading from "./Loading";
+import { API_BASE_URL, IMAGES_BASE_URL } from "./constants";
 
 const timeFromMinutes = (minutes: number): string => {
     const hours = Math.floor(minutes / 60);
@@ -39,10 +40,10 @@ const WideLayout = ({ recipe }: { recipe: Resource<Recipe> }) => {
             </div>
             <div class="w-8"></div>
             <div class="basis-1/2">
-                {recipe()?.image === undefined ?
-                    <img src={missing_food} class="aspect-video bg-slate-100 rounded-xl" />
+                {recipe()?.image ?
+                    <img src={IMAGES_BASE_URL + "/" + recipe()!.image} class="rounded-xl aspect-video h-auto w-full object-cover" />
                     :
-                    <img src={recipe()!.image} class="rounded-xl aspect-video h-auto w-full object-cover" />
+                    <img src={missing_food} class="aspect-video bg-slate-100 rounded-xl" />
                 }
                 <div class="flex flex-row justify-between">
                     {
@@ -68,10 +69,10 @@ const WideLayout = ({ recipe }: { recipe: Resource<Recipe> }) => {
 const SlimLayout = ({ recipe }: { recipe: Resource<Recipe> }) => {
     return (
         <>
-            {recipe()?.image === undefined ?
-                <img src={missing_food} class="aspect-video bg-slate-100" />
+            {recipe()?.image ?
+                <img src={IMAGES_BASE_URL + "/" + recipe()!.image} class="max-h-80 w-full h-auto object-cover aspect-video" />
                 :
-                <img src={recipe()!.image} class="max-h-80 w-full h-auto object-cover aspect-video" />
+                <img src={missing_food} class="aspect-video bg-slate-100" />
             }
             <div class="p-8">
                 <h1 class="text-4xl flex flex-row" >
@@ -113,7 +114,7 @@ const SlimLayout = ({ recipe }: { recipe: Resource<Recipe> }) => {
 }
 
 const fetchRecipe = async (id: string) => {
-    let data = await fetch("http://localhost:8080/recipe/" + id);
+    let data = await fetch(API_BASE_URL + "/recipe/" + id);
     let body = await data.json() as Recipe;
     return body;
 }

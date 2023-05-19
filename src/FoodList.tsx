@@ -6,10 +6,11 @@ import { Recipe } from "./Recipe";
 import Stars from "./Stars";
 import styles from "./FoodList.module.css";
 import missing_food from "./assets/icons/file-remove-outline.svg";
+import { API_BASE_URL, IMAGES_BASE_URL } from "./constants";
 
 
 const fetchRecipes = async (query: string) => {
-    let data = await fetch("http://localhost:8080/recipes?query=" + query);
+    let data = await fetch(API_BASE_URL + "/recipes?query=" + query);
     let body = await data.json() as Array<Recipe>;
     return body;
 }
@@ -22,7 +23,7 @@ const RecipeCard: Component<{ recipe: Recipe }> = (props) => {
             <div onClick={() => navigate("/recipe/" + props.recipe.id)} class="rounded-2xl shadow-xl m-2 bg-slate-100 hover:shadow-2xl transition-all hover:bg-slate-200 active:bg-slate-300">
                 {props.recipe.image
                     ?
-                    <img src={props.recipe.image} class="w-full h-auto rounded-t-xl object-cover aspect-video" />
+                    <img src={IMAGES_BASE_URL + "/" + props.recipe.image} class="w-full h-auto rounded-t-xl object-cover aspect-video" />
                     :
                     <img src={missing_food} class="aspect-video" />
                 }
