@@ -181,6 +181,11 @@ fn with_db(db: Db) -> impl Filter<Extract = (Db,), Error = std::convert::Infalli
 }
 
 pub async fn run_server(addr: SocketAddr, conn: Db) {
+    let cors = warp::cors()
+        .allow_any_origin()
+        .allow_headers(vec!["content-type"])
+        .allow_methods(vec!["POST", "GET"]);
+
     let create_recipe = warp::post()
         .and(warp::path("recipe"))
         .and(warp::body::json())
@@ -199,7 +204,10 @@ pub async fn run_server(addr: SocketAddr, conn: Db) {
         .and(with_db(conn.clone()))
         .and_then(handle_get_recipes_filtered);
 
-    let filter = recipe_by_id.or(recipes_filtered).or(create_recipe);
+    let filter = recipe_by_id
+        .or(recipes_filtered)
+        .or(create_recipe)
+        .with(cors);
 
     let (addr, server) = warp::serve(filter).bind_with_graceful_shutdown(addr, shutdown_signal());
     println!("Serving on address {} with port {}", addr.ip(), addr.port());
