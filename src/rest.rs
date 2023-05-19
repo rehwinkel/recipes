@@ -1,6 +1,12 @@
 use std::{
-    convert::Infallible, io::Cursor, net::SocketAddr, num::NonZeroUsize, ops::DerefMut, path::Path,
-    sync::Arc, time::Duration,
+    convert::Infallible,
+    io::Cursor,
+    net::SocketAddr,
+    num::NonZeroUsize,
+    ops::DerefMut,
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::Duration,
 };
 
 use base64::Engine;
@@ -71,7 +77,11 @@ impl From<std::io::Error> for ClientImageError {
     }
 }
 
-fn decode_image_and_store(id: &str, data_base64: &str) -> Result<(), ClientImageError> {
+fn decode_image_and_store(
+    id: &str,
+    data_base64: &str,
+    images_path: &Path,
+) -> Result<(), ClientImageError> {
     let engine = &base64::engine::general_purpose::STANDARD;
     let mut bytes = Vec::new();
     engine
@@ -80,7 +90,6 @@ fn decode_image_and_store(id: &str, data_base64: &str) -> Result<(), ClientImage
     let img = ImageReader::new(Cursor::new(&bytes))
         .with_guessed_format()?
         .decode()?;
-    let images_path = Path::new("images");
     if !images_path.is_dir() {
         log::warn!("Images directory is missing");
     }
@@ -92,7 +101,11 @@ fn decode_image_and_store(id: &str, data_base64: &str) -> Result<(), ClientImage
     Ok(())
 }
 
-async fn handle_create_recipe(body: CreateRecipeBody, conn: Db) -> Result<impl Reply, Infallible> {
+async fn handle_create_recipe(
+    body: CreateRecipeBody,
+    conn: Db,
+    images: PathBuf,
+) -> Result<impl Reply, Infallible> {
     let mut conn = conn.lock().await;
     use crate::model::{NewIngredient, Recipe};
     use crate::schema::{ingredients, recipes};
@@ -104,7 +117,7 @@ async fn handle_create_recipe(body: CreateRecipeBody, conn: Db) -> Result<impl R
         body.cost,
     );
     if let Some(image) = body.image_blob {
-        if let Err(_error) = decode_image_and_store(&recipe.id, &image) {
+        if let Err(_error) = decode_image_and_store(&recipe.id, &image, &images) {
             log::error!(
                 "Failed to upload image for id {}, recipe not created.",
                 &recipe.id
@@ -138,9 +151,9 @@ async fn handle_create_recipe(body: CreateRecipeBody, conn: Db) -> Result<impl R
     ))
 }
 
-fn get_image_from_id(id: &str) -> Option<String> {
+fn get_image_from_id(id: &str, images_path: &Path) -> Option<String> {
     let image_name = format!("{}.jpeg", id);
-    let image_path = Path::new("images").join(&image_name);
+    let image_path = images_path.join(&image_name);
     if image_path.is_file() {
         Some(image_name)
     } else {
@@ -148,7 +161,11 @@ fn get_image_from_id(id: &str) -> Option<String> {
     }
 }
 
-async fn handle_get_recipe_by_id(uid: String, conn: Db) -> Result<Response, Infallible> {
+async fn handle_get_recipe_by_id(
+    uid: String,
+    conn: Db,
+    images: PathBuf,
+) -> Result<Response, Infallible> {
     use crate::model::{Ingredient, Recipe};
     use crate::schema::ingredients::dsl::*;
     use crate::schema::{ingredients, recipes};
@@ -169,7 +186,7 @@ async fn handle_get_recipe_by_id(uid: String, conn: Db) -> Result<Response, Infa
         .expect("Failed to load ingredients for recipe from DB");
     let ingredients_list: Vec<String> = ingredients_list.into_iter().map(|ing| ing.title).collect();
 
-    let image = get_image_from_id(&found_recipe.id);
+    let image = get_image_from_id(&found_recipe.id, &images);
 
     let response_recipe = ResponseRecipe {
         id: found_recipe.id,
@@ -211,6 +228,7 @@ fn fuzzy_sort_recipes(recipes: Vec<ResponseRecipe>, query: &str) -> Vec<Response
 async fn handle_get_recipes_filtered(
     query: RecipesQuery,
     conn: Db,
+    images: PathBuf,
 ) -> Result<impl Reply, Infallible> {
     let recipe_list: Vec<ResponseRecipe> = {
         use crate::model::{Ingredient, Recipe};
@@ -229,7 +247,7 @@ async fn handle_get_recipes_filtered(
             .into_iter()
             .zip(recipes_list)
             .map(|(ingreds, rec)| ResponseRecipe {
-                image: get_image_from_id(&rec.id),
+                image: get_image_from_id(&rec.id, &images),
                 id: rec.id,
                 title: rec.title,
                 description: rec.description,
@@ -258,7 +276,13 @@ fn with_db(db: Db) -> impl Filter<Extract = (Db,), Error = std::convert::Infalli
     warp::any().map(move || db.clone())
 }
 
-pub async fn run_server(addr: SocketAddr, conn: Db) {
+fn with_images_dir(
+    path: PathBuf,
+) -> impl Filter<Extract = (PathBuf,), Error = std::convert::Infallible> + Clone {
+    warp::any().map(move || path.clone())
+}
+
+pub async fn run_server(addr: SocketAddr, conn: Db, images: &Path) {
     let cors = warp::cors()
         .allow_any_origin()
         .allow_headers(vec!["content-type"])
@@ -268,18 +292,21 @@ pub async fn run_server(addr: SocketAddr, conn: Db) {
         .and(warp::path("recipe"))
         .and(warp::body::json())
         .and(with_db(conn.clone()))
+        .and(with_images_dir(images.to_path_buf()))
         .and_then(handle_create_recipe);
 
     let recipe_by_id = warp::get()
         .and(warp::path("recipe"))
         .and(warp::path::param::<String>())
         .and(with_db(conn.clone()))
+        .and(with_images_dir(images.to_path_buf()))
         .and_then(handle_get_recipe_by_id);
 
     let recipes_filtered = warp::get()
         .and(warp::path("recipes"))
         .and(warp::query::<RecipesQuery>())
         .and(with_db(conn.clone()))
+        .and(with_images_dir(images.to_path_buf()))
         .and_then(handle_get_recipes_filtered);
 
     let filter = recipe_by_id

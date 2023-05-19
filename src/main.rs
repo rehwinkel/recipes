@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, sync::Arc};
+use std::{net::SocketAddr, path::Path, sync::Arc};
 
 use clap::Parser;
 use diesel::{Connection, SqliteConnection};
@@ -13,6 +13,8 @@ mod schema;
 struct Args {
     #[arg(short, long, default_value = "recipes.sqlite")]
     db_file: String,
+    #[arg(short, long, default_value = "./images")]
+    images_dir: String,
     #[arg(long, default_value = "127.0.0.1")]
     host: String,
     #[arg(short, long, default_value_t = 8080)]
@@ -49,10 +51,11 @@ async fn main() {
         .unwrap_or_else(|e| panic!("Invalid address '{}': {}", addr_string, e));
 
     let db_url = format!("file:{}", args.db_file);
+    log::info!("Connecting to DB url '{}'", &db_url);
 
     let conn = Arc::new(Mutex::new(
         SqliteConnection::establish(&db_url).expect("Failed to open SQL database"),
     ));
 
-    rest::run_server(addr, conn).await;
+    rest::run_server(addr, conn, &Path::new(&args.images_dir)).await;
 }
