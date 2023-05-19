@@ -42,6 +42,18 @@ struct RecipeWithIngredients {
     ingredients: Vec<String>,
 }
 
+#[derive(Serialize)]
+struct ResponseRecipe {
+    id: String,
+    title: String,
+    description: String,
+    rating: i32,
+    time: i32,
+    cost: f32,
+    image: Option<String>,
+    ingredients: Vec<String>,
+}
+
 enum ClientImageError {
     InvalidBase64,
     InvalidFormat(ImageError),
@@ -126,6 +138,16 @@ async fn handle_create_recipe(body: CreateRecipeBody, conn: Db) -> Result<impl R
     ))
 }
 
+fn get_image_from_id(id: &str) -> Option<String> {
+    let image_name = format!("{}.jpeg", id);
+    let image_path = Path::new("images").join(&image_name);
+    if image_path.is_file() {
+        Some(image_name)
+    } else {
+        None
+    }
+}
+
 async fn handle_get_recipe_by_id(uid: String, conn: Db) -> Result<Response, Infallible> {
     use crate::model::{Ingredient, Recipe};
     use crate::schema::ingredients::dsl::*;
@@ -147,7 +169,9 @@ async fn handle_get_recipe_by_id(uid: String, conn: Db) -> Result<Response, Infa
         .expect("Failed to load ingredients for recipe from DB");
     let ingredients_list: Vec<String> = ingredients_list.into_iter().map(|ing| ing.title).collect();
 
-    let response_recipe = RecipeWithIngredients {
+    let image = get_image_from_id(&found_recipe.id);
+
+    let response_recipe = ResponseRecipe {
         id: found_recipe.id,
         title: found_recipe.title,
         description: found_recipe.description,
@@ -155,17 +179,15 @@ async fn handle_get_recipe_by_id(uid: String, conn: Db) -> Result<Response, Infa
         time: found_recipe.time,
         cost: found_recipe.cost,
         ingredients: ingredients_list,
+        image: image,
     };
 
     Ok(warp::reply::json(&response_recipe).into_response())
 }
 
-fn fuzzy_sort_recipes(
-    recipes: Vec<RecipeWithIngredients>,
-    query: &str,
-) -> Vec<RecipeWithIngredients> {
+fn fuzzy_sort_recipes(recipes: Vec<ResponseRecipe>, query: &str) -> Vec<ResponseRecipe> {
     let matcher = SkimMatcherV2::default();
-    let mut results: Vec<(RecipeWithIngredients, i64)> = recipes
+    let mut results: Vec<(ResponseRecipe, i64)> = recipes
         .into_iter()
         .map(|rec| {
             (
@@ -190,7 +212,7 @@ async fn handle_get_recipes_filtered(
     query: RecipesQuery,
     conn: Db,
 ) -> Result<impl Reply, Infallible> {
-    let recipe_list: Vec<RecipeWithIngredients> = {
+    let recipe_list: Vec<ResponseRecipe> = {
         use crate::model::{Ingredient, Recipe};
         use crate::schema::recipes::dsl::*;
         let mut conn = conn.lock().await;
@@ -206,7 +228,8 @@ async fn handle_get_recipes_filtered(
         recipe_ingredients
             .into_iter()
             .zip(recipes_list)
-            .map(|(ingreds, rec)| RecipeWithIngredients {
+            .map(|(ingreds, rec)| ResponseRecipe {
+                image: get_image_from_id(&rec.id),
                 id: rec.id,
                 title: rec.title,
                 description: rec.description,
