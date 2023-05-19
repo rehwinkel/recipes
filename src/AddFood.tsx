@@ -5,6 +5,17 @@ import star from "./assets/icons/star-yellow.svg";
 
 const timeRegex = new RegExp("^\\d\\d:\\d\\d$");
 
+
+const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
+    let binary = '';
+    const bytes = new Uint8Array(buffer);
+    const len = bytes.byteLength;
+    for (var i = 0; i < len; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+    return window.btoa(binary);
+}
+
 const AddFood: Component = () => {
     const [ingredients, setIngredients] = createSignal<Array<string>>([]);
     const [stars, setStars] = createSignal(5);
@@ -54,7 +65,7 @@ const AddFood: Component = () => {
         const contents = await file?.arrayBuffer();
         let image: string | undefined;
         if (contents) {
-            image = Buffer.from(contents).toString("base64");
+            image = arrayBufferToBase64(contents);
         } else {
             image = undefined;
         }
